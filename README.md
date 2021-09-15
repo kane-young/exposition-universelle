@@ -5,9 +5,10 @@
 ### Index
 
 - [Overview](#Overview)
+- [기능](#기능)
 - [설계 및 구현](#설계-및-구현)
-- [trouble shooting](#trouble-shooting)
-- [학습한 내용](#관련-학습-내용)
+- [고민했던 점](#고민했던-점)
+- [Trouble Shooting](#Trouble Shooting)
 
 <br>
 
@@ -174,49 +175,137 @@ struct Exposition: Decodable {
 
 <br>
 
-### Unit Test를 통해서 JSON Parsing 테스트
+### ViewController 전환시 필요한 데이터 주기
 
-UI 구성 이전, JSON Parsing 정확성에 대해 검증을 하기 위해 Unit Test를 진행했습니다. XCTest Framework의 XCTAssertEqual 메서드를 활용하여 Mock 데이터가 제대로 Parsing 되었는지 검증하였습니다
+<img width="557" alt="스크린샷 2021-09-16 오전 12 30 07" src="https://user-images.githubusercontent.com/64566207/133463448-ee180479-ec04-448b-97ac-1171054f4be4.png">
+
+목적지 ViewController에 매개체로 사용할 변수 `paramItem`를 설정하고, 전환 전에 `paramItem` 을 통해서 값을 저장
+
+viewDidLoad() 에서 해당 변수를 통해서 UI에 반영
 
 ```swift
-var decoder: JSONDecoder!
-let mockExposition: Data = """
-      {
-          "title":"파리 만국박람회 1900(L'Exposition de Paris 1900)",
-          "visitors":48130300,
-          "location":"프랑스 파리",
-          "duration":"1900. 04. 14 - 1900. 11. 12",
-            "description":"1900년 파리에서 열린 Exposition"
+extension KoreaItemsListViewController: UITableViewDelegate {
+  func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+      let storyboard = UIStoryboard(name: "Main", bundle: .main)
+      guard let itemInfoViewController = storyboard.instantiateViewController(identifier: "itemInfoVC") as? ItemInfoViewController else {
+        return
       }
-      """.data(using: .utf16)!
 
-override func setUpWithError() throws {
-    decoder = JSONDecoder()
+      itemInfoViewController.paramItem = self.itemsData[indexPath.row]
+      self.navigationController?.pushViewController(itemInfoViewController, animated: true)
+  }
 }
 
-override func tearDownWithError() throws {
-    decoder = nil
-}
-
-func testExpositionAssetTitle() {
-  do {
-      let result = try decoder.decode(Exposition.self, from: mockExposition)
-      XCTAssertEqual(result.title, "파리 만국박람회 1900(L'Exposition de Paris 1900)")
-  } catch {
-      XCTFail()
+final class ItemInfoViewController: UIViewController {
+  var paramItem: Item?
+  //...
+  override func viewDidLoad() {
+    super.viewDidLoad()
+    initializeViews()
+  }
+  
+  private func initializedViews() {
+    self.navigationItem.title = paramItem?.name
+    guard let imageName = paramItem?.imageName else {
+      return
+    }
+    self.itemImageView.image = UIImage(named: imageName)
+    self.itemDescriptionLabel.text = paramItem?.description
   }
 }
 ```
 
+<br>
 
+### Unit Test를 통해서 JSON Parsing 테스트
+
+**Unit Test를 진행한 이유**
+
+UI 구성 이전, JSON Parsing 정확성에 대해 검증을 하기 위해 Unit Test를 진행했습니다. Test를 작성하는데 소요되는 시간이 적지 않지만 여러 환경에 대한 검증을 통해 확신을 가지는 코드를 생성해낼 수 있다는 장점을 경험을 통해 확인했습니다. 
+
+```swift
+var decoder: JSONDecoder!
+let mockExposition: Data = """
+{
+  "title":"파리 만국박람회 1900(L'Exposition de Paris 1900)",
+  "visitors":48130300,
+  "location":"프랑스 파리",
+  "duration":"1900. 04. 14 - 1900. 11. 12",
+  "description":"1900년 파리에서 열린 Exposition"
+}
+""".data(using: .utf16)!
+
+override func setUpWithError() throws {
+  decoder = JSONDecoder()
+}
+
+override func tearDownWithError() throws {
+  decoder = nil
+}
+
+func testExpositionAssetTitle() {
+  do {
+    let result = try decoder.decode(Exposition.self, from: mockExposition)
+    XCTAssertEqual(result.title, "파리 만국박람회 1900(L'Exposition de Paris 1900)")
+  } catch {
+    XCTFail()
+  }
+}
+```
+
+XCTest Framework의 XCTAssertEqual 메서드를 활용하여 Mock 데이터가 제대로 Parsing 되었는지 검증하였습니다. 
 
 <br>
 
-## 고민했던 점
+## 4. 고민했던 점
 
+### TableView에서 선택한 행에 대한 정보를 다음 페이지에 어떻게 줄 것인지?([PR](https://github.com/yagom-academy/ios-exposition-universelle/pull/61#issue-613391509))
 
+아래 두 가지 경우에 대해서 고민하였으나, 두 번의 Parsing은 비효율적인 resource 사용이라고 판단되어서 값을 `paramItem` 을 통해서 전달하였습니다
 
+- `paramItem` 과 같은 변수를 목적지 ViewController 에 두고 전환 이전에 값을 전달한 이후 화면 전환
+- `indexPath` 를 넘겨주고 목적지 ViewController 에서 다시 Parsing한 후 `indexPath` 에 맞는 data 사용
 
+<br>
+
+### 하드 코딩 / 매직넘버를 하지 않기 위한 좋은 방법 ([PR](https://github.com/yagom-academy/ios-exposition-universelle/pull/61#issue-613391509))
+
+하드 코딩 / 매직 넘버는 소스의 가독성을 매우 떨어지게 만듭니다. 특정  Int 값, String 값이 "어떠한 목적을 가지는지", "어디에 정확히 사용되는지" 알아보기 힘듭니다. 하드코딩을 줄이게 된다면 업무 효율성 증대를 가져올 수 있습니다.
+
+또한, 자주 사용하는 값의 경우 하나의 상수로 묶어서 사용하면, 이후 코드 리팩토링 과정에서 수정할 시에 상수 깂만 변경하면 된다는 장점이 있습니다
+
+```swift
+private let navigationTitle: String = "메인"
+private let posterImage: String  = "poster"
+private let flagImage: String = "flag"
+private let listPageButtonTitle = "한국의 출품작 보러가기"
+private let prePhraseVisitors: String = "방문객 : "
+private let prePhraseLocation: String = "개최지 : "
+private let prePhraseDuration: String = "개최 기간 : "
+```
+
+위와 같이 상수로 작성하거나 아래와 같이 하나의 열거형으로 묶어서 관리하도록 하였습니다
+
+```swift
+private enum Style {
+  static let navigationTitle: String = "메인"
+  static let listPageButtonTitle = "한국의 출품작 보러가기"
+  static let prePhraseVisitors: String = "방문객 : "
+  static let prePhraseLocation: String = "개최지 : "
+  static let prePhraseDuration: String = "개최 기간 : "
+}
+private enum Image {
+  static let flag: String = "flag"
+  static let poster: String = "poster"
+}
+```
+
+<br>
 
 ## Trouble Shooting
 
+### 화면 복귀시 선택했었된 cell effect가 남는 문제 발생([PR](https://github.com/yagom-academy/ios-exposition-universelle/pull/61#issue-613391509))
+
+아래와 같은 문제를 해결하기 위해서 `Storyboard` Selection 색을 Default로 설정함으로써 해결
+
+<img src="https://user-images.githubusercontent.com/64566207/114362136-f660fc80-9bb1-11eb-85e5-aa6303604898.png">
